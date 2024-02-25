@@ -1,0 +1,35 @@
+version: 0.2
+
+env:
+  variables:
+    DOCKERHUB_USERNAME: "evecaviedes"
+    DOCKERHUB_PASSWORD: "3iiZgT4StVX5$NqS"
+
+phases:
+  pre_build:
+    commands:
+      - echo Logging in to Amazon ECR...
+      - aws --version
+      - aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 855390817614.dkr.ecr.us-east-1.amazonaws.com
+      - REPOSITORY_URI=855390817614.dkr.ecr.us-east-1.amazonaws.com/meydit-frontend
+      - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
+      - IMAGE_TAG=${COMMIT_HASH:=prod}
+      - echo Logging in to Docker Hub...
+      - echo "$DOCKERHUB_PASSWORD" | docker login --username "$DOCKERHUB_USERNAME" --password-stdin
+  build:
+    commands:
+      - echo Build started on `date`
+      - echo Building the Docker image...
+      - docker build --build-arg ENV_VARIABLE=357846786 -t $REPOSITORY_URI:prod .
+      - docker tag $REPOSITORY_URI:prod $REPOSITORY_URI:$IMAGE_TAG
+  post_build:
+    commands:
+      - echo Build completed on `date`
+      - echo Pushing the Docker images...
+      - docker push $REPOSITORY_URI:prod
+      - docker push $REPOSITORY_URI:$IMAGE_TAG
+      - echo Writing image definitions file...
+      - printf '[{"name":"meydit-frontend","imageUri":"%s"}]' $REPOSITORY_URI:$IMAGE_TAG > imagedefinitions.json
+      - aws ecs update-service --cluster meydit-frontend-ecs01 --service meydit-frontend --force-new-deployment --region us-east-1 --deployment-configuration "maximumPercent=200,minimumHealthyPercent=0"
+artifacts:
+    files: imagedefinitions.json
